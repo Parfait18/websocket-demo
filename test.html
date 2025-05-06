@@ -1,0 +1,47 @@
+<!DOCTYPE html>
+<html>
+
+<head>
+    <title>Chat Test</title>
+    <script src="https://cdn.socket.io/4.7.2/socket.io.min.js"></script>
+</head>
+
+<body>
+    <div id="messages"></div>
+    <input type="text" id="username" placeholder="Username">
+    <button onclick="setUsername()">Set Username</button>
+    <br>
+    <input type="text" id="message" placeholder="Message">
+    <button onclick="sendMessage()">Send</button>
+
+    <script>
+        const socket = io('http://localhost:3000/standard-chat');
+
+        socket.on('connect', () => {
+            console.log('Connected!');
+            document.getElementById('messages').innerHTML += '<p>Connected to server</p>';
+        });
+
+        socket.on('message', (data) => {
+            document.getElementById('messages').innerHTML +=
+                `<p>${data.username}: ${data.message}</p>`;
+        });
+
+        socket.on('userList', (users) => {
+            console.log('Active users:', users);
+        });
+
+        function setUsername() {
+            const username = document.getElementById('username').value;
+            socket.emit('setUsername', username);
+        }
+
+        function sendMessage() {
+            const message = document.getElementById('message').value;
+            socket.emit('chatMessage', message);
+            document.getElementById('message').value = '';
+        }
+    </script>
+</body>
+
+</html>
