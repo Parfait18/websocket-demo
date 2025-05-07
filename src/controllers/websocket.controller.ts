@@ -7,10 +7,18 @@ import { StompGateway } from '../stomp/stomp.gateway';
 import { BinaryGateway } from '../binary/binary.gateway';
 import { LowLatencyGateway } from '../low-latency/low-latency.gateway';
 import { DistributedGateway } from '../distributed/distributed.gateway';
+import { Logger } from '@nestjs/common';
+import { Socket } from 'socket.io';
 
+/**
+ * Contrôleur principal pour la gestion des WebSockets
+ * Gère les différents types de communications en temps réel
+ */
 @ApiTags('websockets')
 @Controller('ws')
 export class WebSocketController {
+  private readonly logger = new Logger('WebSocketController');
+
   constructor(
     private readonly standardChatGateway: StandardChatGateway,
     private readonly secureChatGateway: SecureChatGateway,
@@ -18,7 +26,9 @@ export class WebSocketController {
     private readonly binaryGateway: BinaryGateway,
     private readonly lowLatencyGateway: LowLatencyGateway,
     private readonly distributedGateway: DistributedGateway,
-  ) { }
+  ) {
+    this.logger.log('🚀 Initialisation du contrôleur WebSocket');
+  }
 
   @Post('chat/message')
   @ApiOperation({
@@ -36,6 +46,7 @@ export class WebSocketController {
     }
   })
   sendChatMessage(@Body() messageDto: ChatMessageDto) {
+    this.logger.log(`📨 Message chat envoyé - Room: ${messageDto.room || 'global'} - Message: ${messageDto.message}`);
     this.standardChatGateway.server.emit('message', {
       message: messageDto.message,
       room: messageDto.room,
@@ -60,6 +71,7 @@ export class WebSocketController {
     }
   })
   sendSecureMessage(@Body() messageDto: ChatMessageDto) {
+    this.logger.log(`🔒 Message sécurisé envoyé - Message: ${messageDto.message}`);
     this.secureChatGateway.server.emit('secureMessage', {
       message: messageDto.message,
       timestamp: new Date()
@@ -83,6 +95,7 @@ export class WebSocketController {
     }
   })
   publishStompMessage(@Body() messageDto: StompMessageDto) {
+    this.logger.log(`📢 Publication STOMP - Topic: ${messageDto.topic} - Message: ${messageDto.message}`);
     this.stompGateway.server.to(messageDto.topic).emit('message', {
       topic: messageDto.topic,
       message: messageDto.message,
@@ -107,6 +120,7 @@ export class WebSocketController {
     }
   })
   updateGameState(@Body() stateDto: GameStateDto) {
+    this.logger.log(`🎮 Mise à jour état du jeu - État: ${JSON.stringify(stateDto.state)}`);
     this.lowLatencyGateway.server.volatile.emit('gameUpdate', {
       state: stateDto,
       timestamp: Date.now()
@@ -125,6 +139,7 @@ export class WebSocketController {
     type: ServiceRegistrationDto
   })
   registerService(@Body() serviceDto: ServiceRegistrationDto) {
+    this.logger.log(`📝 Enregistrement service - Nom: ${serviceDto.name} - Type: ${serviceDto.type}`);
     return this.distributedGateway.handleRegisterService(null, serviceDto);
   }
 
@@ -148,12 +163,88 @@ export class WebSocketController {
     }
   })
   getConnections() {
-    return {
+    const connections = {
       standardChat: this.standardChatGateway.server.engine.clientsCount,
       secureChat: this.secureChatGateway.server.engine.clientsCount,
       stomp: this.stompGateway.server.engine.clientsCount,
       lowLatency: this.lowLatencyGateway.server.engine.clientsCount,
       distributed: this.distributedGateway.server.engine.clientsCount
     };
+    this.logger.log(`📊 Statistiques de connexion:\n${JSON.stringify(connections, null, 2)}`);
+    return connections;
+  }
+
+  @Post('chat/join')
+  @ApiOperation({
+    summary: 'Rejoindre une room de chat',
+    description: 'Permet à un utilisateur de rejoindre une room de chat spécifique'
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Room rejointe avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true }
+      }
+    }
+  })
+  joinChatRoom(@Body() data: { room: string, clientId: string }) {
+    this.logger.log(`👥 Tentative de connexion à la room - Room: ${data.room} - Client: ${data.clientId}`);
+    const mockSocket = {
+      id: data.clientId,
+      join: (room: string) => {
+        this.logger.debug(`🔄 Simulation join pour ${data.clientId} dans ${room}`);
+      },
+      emit: (event: string, data: any) => {
+        this.logger.debug(`🔄 Simulation emit pour ${event}`);
+      },
+      data: {
+        user: {
+          username: 'Anonymous'
+        }
+      }
+    } as Socket;
+    return this.standardChatGateway.handleJoinRoom(mockSocket, data.room);
+  }
+
+  @Post('chat/leave')
+  @ApiOperation({
+    summary: 'Quitter une room de chat',
+    description: 'Permet à un utilisateur de quitter une room de chat spécifique'
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Room quittée avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true }
+      }
+    }
+  })
+  leaveChatRoom(@Body() data: { room: string, clientId: string }) {
+    this.logger.log(`👋 Départ de la room - Room: ${data.room} - Client: ${data.clientId}`);
+    return this.standardChatGateway.handleLeaveRoom({ id: data.clientId } as Socket, data.room);
+  }
+
+  @Post('chat/username')
+  @ApiOperation({
+    summary: 'Définir un nom d\'utilisateur',
+    description: 'Permet à un utilisateur de définir son nom d\'utilisateur pour le chat'
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Nom d\'utilisateur défini avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true }
+      }
+    }
+  })
+  setUsername(@Body() data: { username: string, clientId: string }) {
+    this.logger.log(`👤 Définition username - Client: ${data.clientId} - Username: ${data.username}`);
+    return this.standardChatGateway.handleSetUsername({ id: data.clientId } as Socket, data.username);
   }
 }
