@@ -71,5 +71,5 @@
     "coverageDirectory": "../coverage",
     "testEnvironment": "node"
   },
-  "type": "module"
+  "type": "commonjs"
 }

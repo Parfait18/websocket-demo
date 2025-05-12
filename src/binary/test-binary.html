@@ -1,0 +1,252 @@
+<!DOCTYPE html>
+<html lang="fr">
+
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Test Binary Gateway</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <script src="https://cdn.socket.io/4.7.4/socket.io.min.js"></script>
+</head>
+
+<body class="bg-gray-100 min-h-screen p-8">
+    <div class="max-w-4xl mx-auto">
+        <!-- En-tête -->
+        <header class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h1 class="text-3xl font-bold text-gray-800 mb-2">Test Binary Gateway</h1>
+            <p class="text-gray-600">Interface de test pour le transfert de données binaires et streaming</p>
+        </header>
+
+        <!-- Section Transfert de Fichiers -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Transfert de Fichiers</h2>
+            <div class="space-y-4">
+                <div class="border-2 border-dashed border-gray-300 rounded-lg p-6 text-center">
+                    <input type="file" id="fileInput" class="hidden" />
+                    <label for="fileInput" class="cursor-pointer">
+                        <div class="text-gray-600">
+                            <svg class="mx-auto h-12 w-12 mb-2" fill="none" stroke="currentColor" viewBox="0 0 24 24">
+                                <path stroke-linecap="round" stroke-linejoin="round" stroke-width="2"
+                                    d="M7 16a4 4 0 01-.88-7.903A5 5 0 1115.9 6L16 6a5 5 0 011 9.9M15 13l-3-3m0 0l-3 3m3-3v12" />
+                            </svg>
+                            <p>Cliquez ou glissez un fichier ici</p>
+                        </div>
+                    </label>
+                </div>
+                <button id="sendFile"
+                    class="w-full bg-blue-500 text-white py-2 px-4 rounded-lg hover:bg-blue-600 transition-colors">
+                    Envoyer le Fichier
+                </button>
+            </div>
+            <div class="mt-4">
+                <div class="relative pt-1">
+                    <div class="flex mb-2 items-center justify-between">
+                        <div>
+                            <span
+                                class="text-xs font-semibold inline-block py-1 px-2 uppercase rounded-full text-blue-600 bg-blue-200">
+                                Progression
+                            </span>
+                        </div>
+                        <div class="text-right">
+                            <span id="progressText" class="text-xs font-semibold inline-block text-blue-600">
+                                0%
+                            </span>
+                        </div>
+                    </div>
+                    <div class="overflow-hidden h-2 mb-4 text-xs flex rounded bg-blue-200">
+                        <div id="progressBar" style="width:0%"
+                            class="shadow-none flex flex-col text-center whitespace-nowrap text-white justify-center bg-blue-500 transition-all duration-500">
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+
+        <!-- Section Streaming -->
+        <div class="bg-white rounded-lg shadow-lg p-6 mb-8">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Streaming</h2>
+            <div class="space-y-4">
+                <div class="flex space-x-4">
+                    <input type="text" id="streamId" placeholder="ID du Stream"
+                        class="flex-1 border rounded-lg px-4 py-2 focus:outline-none focus:ring-2 focus:ring-blue-500" />
+                    <button id="startStream"
+                        class="bg-green-500 text-white py-2 px-6 rounded-lg hover:bg-green-600 transition-colors">
+                        Démarrer Stream
+                    </button>
+                </div>
+                <div id="streamStatus" class="hidden p-4 rounded-lg bg-gray-100">
+                    <p class="text-gray-700">Status: <span id="statusText">Inactif</span></p>
+                </div>
+            </div>
+        </div>
+
+        <!-- Logs -->
+        <div class="bg-white rounded-lg shadow-lg p-6">
+            <h2 class="text-2xl font-semibold text-gray-800 mb-4">Logs</h2>
+            <div id="logs" class="bg-gray-100 rounded-lg p-4 h-48 overflow-y-auto font-mono text-sm">
+            </div>
+        </div>
+    </div>
+
+    <script>
+
+        function updateProgress(percentage) {
+            const progressBar = document.getElementById('progressBar');
+            const progressText = document.getElementById('progressText');
+            progressBar.style.width = `${percentage}%`;
+            progressText.textContent = `${percentage}%`;
+        }
+
+
+        // Configuration Socket.IO avec des options de reconnexion
+        const socket = io('http://localhost:3000/binary', {
+            transports: ['websocket'],
+            reconnection: true,
+            reconnectionAttempts: 5,
+            reconnectionDelay: 1000,
+            timeout: 60000,
+            maxPayload: 10 * 1024 * 1024 // 10MB
+        });
+
+        // Constantes globales
+        const CHUNK_SIZE = 512 * 1024; // 512KB pour correspondre au serveur
+        let receivedChunks = new Map();
+        let isTransferring = false; // Nouvel indicateur d'état de transfert
+
+        // Gestionnaire d'événement pour le bouton de sélection de fichier
+        document.getElementById('sendFile').addEventListener('click', async () => {
+            if (isTransferring) {
+                log('⚠️ Un transfert est déjà en cours');
+                return;
+            }
+
+            const fileInput = document.getElementById('fileInput');
+            const file = fileInput.files[0];
+            if (!file) {
+                log('❌ Aucun fichier sélectionné');
+                return;
+            }
+
+            isTransferring = true;
+            const sendButton = document.getElementById('sendFile');
+            sendButton.disabled = true;
+            sendButton.classList.add('opacity-50');
+
+            try {
+                const buffer = await file.arrayBuffer();
+                log(`📤 Préparation de l'envoi: ${file.name} (${buffer.byteLength} octets)`);
+
+                const totalChunks = Math.ceil(buffer.byteLength / CHUNK_SIZE);
+                log(`📊 Découpage en ${totalChunks} chunks de ${CHUNK_SIZE} octets`);
+
+                // Envoi des métadonnées avec l'événement correct
+                const metadataResponse = await new Promise((resolve, reject) => {
+                    const errorHandler = (error) => {
+                        isTransferring = false;
+                        socket.off('error', errorHandler);
+                        reject(new Error(`Erreur de transfert: ${error.message}`));
+                    };
+
+                    socket.on('error', errorHandler);
+                    socket.emit('binaryData', buffer, (response) => {
+                        socket.off('error', errorHandler);
+                        if (response && response.success) {
+                            resolve(response);
+                        } else {
+                            isTransferring = false;
+                            reject(new Error(response?.error || 'Erreur d\'initialisation'));
+                        }
+                    });
+                });
+
+                log(`✅ Transfert effectué avec succès (ID: ${metadataResponse.transferId})`);
+
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`);
+                updateProgress(0);
+            } finally {
+                sendButton.disabled = false;
+                sendButton.classList.remove('opacity-50');
+                isTransferring = false;
+            }
+        });
+
+        // Écouteurs d'événements pour le suivi du transfert
+        socket.on('binaryStart', (metadata) => {
+            log(`🚀 Début de la réception - Transfer ID: ${metadata.transferId}`);
+            log(`📊 Taille totale: ${metadata.totalSize} octets en ${metadata.totalChunks} chunks`);
+            updateProgress(0);
+        });
+
+        socket.on('binaryChunk', (data) => {
+            const progress = Math.round((data.chunkIndex + 1) / data.totalChunks * 100);
+            updateProgress(progress);
+            log(`📦 Chunk ${data.chunkIndex + 1}/${data.totalChunks} reçu (${data.size} octets)`);
+        });
+
+        socket.on('binaryComplete', (data) => {
+            log(`✅ Transfert terminé avec succès - Taille totale: ${data.totalSize} octets`);
+            updateProgress(100);
+            isTransferring = false; // Réinitialisation de l'état ici
+        });
+
+
+        // Fonction de logging améliorée
+        function log(message) {
+            const logDiv = document.getElementById('logs');
+            const timestamp = new Date().toISOString();
+            console.log(`[${timestamp}] ${message}`); // Ajout du log console
+            logDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
+            logDiv.scrollTop = logDiv.scrollHeight;
+        }
+
+        socket.on('transferError', (error) => {
+            log(`❌ Erreur de transfert: ${error.message}`);
+            updateProgress(0);
+        });
+
+        // Dans votre test-binary.html, modifiez la partie réception :
+        socket.on('binaryResponse', (data) => {
+            const { chunk, index, total, size } = data;
+
+            if (total === 1) {
+                // Petit fichier, traitement direct
+                log(`📥 Données binaires reçues: ${size} octets`);
+                return;
+            }
+
+            // Gestion des chunks pour les gros fichiers
+            if (!receivedChunks.has(total)) {
+                receivedChunks.set(total, new Map());
+            }
+
+            const fileChunks = receivedChunks.get(total);
+            fileChunks.set(index, chunk);
+
+            log(`📥 Chunk ${index + 1}/${total} reçu (${size} octets)`);
+
+            // Vérifier si tous les chunks sont reçus
+            if (fileChunks.size === total) {
+                // Reconstituer le fichier
+                const completeFile = new Uint8Array(size * total);
+                for (let i = 0; i < total; i++) {
+                    completeFile.set(new Uint8Array(fileChunks.get(i)), i * size);
+                }
+
+                log(`✅ Fichier complet reçu: ${completeFile.length} octets`);
+                receivedChunks.delete(total);
+            }
+        });
+
+
+        socket.on('streamData', (data) => {
+            log(`📺 Données stream reçues - Stream: ${data.streamId}`);
+        });
+
+        socket.on('connect_error', (error) => {
+            log(`❌ Erreur de connexion: ${error.message}`);
+        });
+    </script>
+</body>
+
+</html>

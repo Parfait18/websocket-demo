@@ -247,4 +247,49 @@ export class WebSocketController {
     this.logger.log(`👤 Définition username - Client: ${data.clientId} - Username: ${data.username}`);
     return this.standardChatGateway.handleSetUsername({ id: data.clientId } as Socket, data.username);
   }
+
+  @Post('binary/stream/start')
+  @ApiOperation({
+    summary: 'Démarrer un stream binaire',
+    description: 'Initialise une nouvelle session de streaming binaire'
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Stream démarré avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true },
+        streamId: { type: 'string', example: 'stream-123' }
+      }
+    }
+  })
+  startBinaryStream(@Body() data: { streamId: string, clientId: string }) {
+    this.logger.log(`🎥 Démarrage stream binaire - ID: ${data.streamId}, Client: ${data.clientId}`);
+    return this.binaryGateway.handleStreamStart({ id: data.clientId } as Socket, { id: data.streamId });
+  }
+
+  @Post('binary/stream/data')
+  @ApiOperation({
+    summary: 'Envoyer des données de stream',
+    description: 'Envoie des données binaires à un stream existant'
+  })
+  @ApiResponse({
+    status: 201,
+    description: 'Données envoyées avec succès',
+    schema: {
+      type: 'object',
+      properties: {
+        success: { type: 'boolean', example: true }
+      }
+    }
+  })
+  sendStreamData(@Body() data: { streamId: string, clientId: string, binaryData: Buffer }) {
+    this.logger.log(`📤 Envoi données stream - Stream: ${data.streamId}, Client: ${data.clientId}`);
+    const mockSocket = { id: data.clientId } as Socket;
+    return this.binaryGateway.handleStreamData(mockSocket, {
+      streamId: data.streamId,
+      data: data.binaryData
+    });
+  }
 }

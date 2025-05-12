@@ -17,10 +17,10 @@ export class SecureChatGateway implements OnGatewayConnection, OnGatewayDisconne
   server: Server;
 
   private readonly logger = new Logger('SecureChatGateway');
-  private activeUsers = new Map<string, {username: string, publicKey: string}>();
+  private activeUsers = new Map<string, { username: string, publicKey: string }>();
   private messageHistory = new Map<string, Array<any>>();
 
-  constructor(private jwtService: JwtService) {}
+  constructor(private jwtService: JwtService) { }
 
   async handleConnection(client: Socket) {
     try {
@@ -45,7 +45,7 @@ export class SecureChatGateway implements OnGatewayConnection, OnGatewayDisconne
   }
 
   @SubscribeMessage('registerSecureUser')
-  handleRegisterUser(client: Socket, data: {username: string, publicKey: string}) {
+  handleRegisterUser(client: Socket, data: { username: string, publicKey: string }) {
     this.activeUsers.set(client.id, {
       username: data.username,
       publicKey: data.publicKey
@@ -79,7 +79,7 @@ export class SecureChatGateway implements OnGatewayConnection, OnGatewayDisconne
       const verify = crypto.createVerify('SHA256');
       verify.update(payload.message);
       const isValid = verify.verify(sender.publicKey, payload.signature, 'base64');
-      
+
       if (!isValid) {
         throw new Error('Signature invalide');
       }
@@ -94,7 +94,7 @@ export class SecureChatGateway implements OnGatewayConnection, OnGatewayDisconne
 
       // Sauvegarder dans l'historique
       this.messageHistory.get('global')?.push(messageData);
-      
+
       this.logger.log(`🔒 Message sécurisé validé de ${sender.username}`);
       return { success: true };
     } catch (error) {
