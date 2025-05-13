@@ -139,15 +139,18 @@
                 const totalChunks = Math.ceil(buffer.byteLength / CHUNK_SIZE);
                 log(`📊 Découpage en ${totalChunks} chunks de ${CHUNK_SIZE} octets`);
 
-                // Envoi des métadonnées avec l'événement correct
+                // Envoi des métadonnées avec gestion des erreurs améliorée
                 const metadataResponse = await new Promise((resolve, reject) => {
+                    // Utilisation de l'événement d'erreur natif de Socket.IO
                     const errorHandler = (error) => {
                         isTransferring = false;
                         socket.off('error', errorHandler);
                         reject(new Error(`Erreur de transfert: ${error.message}`));
                     };
 
+                    // Écoute des erreurs de connexion
                     socket.on('error', errorHandler);
+
                     socket.emit('binaryData', buffer, (response) => {
                         socket.off('error', errorHandler);
                         if (response && response.success) {
@@ -160,6 +163,7 @@
                 });
 
                 log(`✅ Transfert effectué avec succès (ID: ${metadataResponse.transferId})`);
+                log(`📊 Total chunks: ${metadataResponse.totalChunks}`);
 
             } catch (error) {
                 log(`❌ Erreur: ${error.message}`);
@@ -190,15 +194,46 @@
             isTransferring = false; // Réinitialisation de l'état ici
         });
 
+        socket.on('streamData', (data) => {
+            log(`📺 Données stream reçues - Stream: ${data.streamId}`);
+        });
 
         // Fonction de logging améliorée
         function log(message) {
             const logDiv = document.getElementById('logs');
             const timestamp = new Date().toISOString();
-            console.log(`[${timestamp}] ${message}`); // Ajout du log console
+            console.log(`[${timestamp}] ${message}`);
             logDiv.innerHTML += `<div>[${timestamp}] ${message}</div>`;
             logDiv.scrollTop = logDiv.scrollHeight;
         }
+
+        // Ajout du gestionnaire d'événements pour le bouton Démarrer Stream
+        document.getElementById('startStream').addEventListener('click', async () => {
+            const streamId = document.getElementById('streamId').value.trim();
+            if (!streamId) {
+                log('❌ Veuillez saisir un ID de stream');
+                return;
+            }
+
+            try {
+                const response = await new Promise((resolve, reject) => {
+                    socket.emit('streamStart', { streamId }, (response) => {
+                        if (response && response.success) {
+                            resolve(response);
+                        } else {
+                            reject(new Error(response?.error || 'Erreur de démarrage du stream'));
+                        }
+                    });
+                });
+
+                log(`🎥 Stream démarré avec succès - ID: ${streamId}`);
+                document.getElementById('statusText').textContent = 'Actif';
+                document.getElementById('streamStatus').classList.remove('hidden');
+
+            } catch (error) {
+                log(`❌ Erreur: ${error.message}`);
+            }
+        });
 
         socket.on('transferError', (error) => {
             log(`❌ Erreur de transfert: ${error.message}`);

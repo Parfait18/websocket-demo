@@ -5,6 +5,12 @@ import { SwaggerModule, DocumentBuilder } from '@nestjs/swagger';
 async function bootstrap() {
     const app = await NestFactory.create(AppModule);
 
+    app.enableCors({
+        origin: '*',
+        methods: ['GET', 'POST'],
+        credentials: true,
+    });
+
     const config = new DocumentBuilder()
         .setTitle('WebSocket Demo API')
         .setDescription('WebSocket implementations demo using NestJS')

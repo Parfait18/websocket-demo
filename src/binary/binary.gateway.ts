@@ -7,6 +7,7 @@ import { Logger } from '@nestjs/common';
   cors: {
     origin: '*',
   },
+  transports: ['websocket'],
   maxHttpBufferSize: 10e6  // Augmenté à 10MB
 })
 export class BinaryGateway {
@@ -79,41 +80,4 @@ export class BinaryGateway {
     }
   }
 
-  @SubscribeMessage('streamStart')
-  handleStreamStart(client: Socket, metadata: any) {
-    this.logger.log(`🎥 Début du stream - ID: ${metadata.id}, Client: ${client.id}`);
-    const streamRoom = `stream-${metadata.id}`;
-
-    if (!this.activeStreams.has(metadata.id)) {
-      this.activeStreams.set(metadata.id, new Set());
-    }
-    this.activeStreams.get(metadata.id).add(client.id);
-    client.join(streamRoom);
-
-    return { success: true, streamId: metadata.id };
-  }
-
-  @SubscribeMessage('streamData')
-  handleStreamData(client: Socket, payload: { streamId: string, data: ArrayBuffer }) {
-    const streamRoom = `stream-${payload.streamId}`;
-
-    if (!this.activeStreams.has(payload.streamId)) {
-      return { success: false, error: 'Stream non trouvé' };
-    }
-
-    if (payload.data.byteLength > 1e6) {
-      this.logger.error(`❌ Données de stream trop volumineuses (${payload.data.byteLength} bytes)`);
-      return { success: false, error: 'Taille maximale dépassée (1MB)' };
-    }
-
-    this.logger.log(`🎥 Données stream reçues - Stream: ${payload.streamId}, Client: ${client.id}`);
-    const buffer = Buffer.from(payload.data);
-    this.server.to(streamRoom).emit('streamData', {
-      streamId: payload.streamId,
-      data: buffer,
-      timestamp: Date.now()
-    });
-
-    return { success: true };
-  }
 }
